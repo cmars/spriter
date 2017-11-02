@@ -1,31 +1,14 @@
-package main
+package spritegen
 
 import (
+	cryptorand "crypto/rand"
+	"encoding/binary"
 	"image"
 	"image/color"
-	"image/png"
-	"log"
 	"math"
-	"math/rand"
-	"os"
-	"time"
+	"math/big"
+	mathrand "math/rand"
 )
-
-func main() {
-	options := DefaultOptions()
-	options.Colored = true
-	g := NewGenerator(Spaceship(), options)
-	m := g.Sprite()
-	f, err := os.Create("image.png")
-	if err != nil {
-		panic(err)
-	}
-	defer f.Close()
-	err = png.Encode(f, m)
-	if err != nil {
-		panic(err)
-	}
-}
 
 type Pixel int8
 
@@ -74,17 +57,28 @@ func (m *Mask) get(x, y int) Pixel {
 	return m.Bitmap[y*m.MaskWidth+x]
 }
 
-func (m *Mask) chooseBody(r *rand.Rand) {
+func (m *Mask) BitLen() int {
+	n := 0
+	for i := range m.Bitmap {
+		switch m.Bitmap[i] {
+		case PixelEmptyOrBody, PixelBorderOrBody:
+			n++
+		}
+	}
+	return n
+}
+
+func (m *Mask) chooseBody(f Flipper) {
 	for i := range m.Bitmap {
 		switch m.Bitmap[i] {
 		case PixelEmptyOrBody:
-			if r.Float64() < 0.5 {
+			if f.Next() {
 				m.Bitmap[i] = PixelEmpty
 			} else {
 				m.Bitmap[i] = PixelBody
 			}
 		case PixelBorderOrBody:
-			if r.Float64() < 0.5 {
+			if f.Next() {
 				m.Bitmap[i] = PixelBorder
 			} else {
 				m.Bitmap[i] = PixelBody
@@ -122,13 +116,84 @@ func (m *Mask) chooseEdges() {
 	}
 }
 
+type Flipper interface {
+	Next() bool
+	Int64() int64
+}
+
+type SeededFlipper struct {
+	*mathrand.Rand
+}
+
+func NewSeededFlipper(seed int64) Flipper {
+	return &SeededFlipper{mathrand.New(mathrand.NewSource(seed))}
+}
+
+func (f *SeededFlipper) Next() bool {
+	return f.Float64() > 0.5
+}
+
+func (f *SeededFlipper) Int64() int64 {
+	return f.Int63()
+}
+
+type BytesFlipper struct {
+	b big.Int
+	i int
+}
+
+func NewBytesFlipper(b []byte) Flipper {
+	f := &BytesFlipper{}
+	f.b.SetBytes(b)
+	f.i = 0
+	return f
+}
+
+func (f *BytesFlipper) Next() bool {
+	if f.i >= f.b.BitLen() {
+		f.i = 0
+	}
+	result := f.b.Bit(f.i) > 0
+	f.i++
+	return result
+}
+
+func (f *BytesFlipper) Int64() int64 {
+	return int64(binary.BigEndian.Uint64(f.b.Bytes()[:8]))
+}
+
+type RandomFlipper struct {
+	*BytesFlipper
+}
+
+func NewRandomFlipper() Flipper {
+	f := NewBytesFlipper(randomBytes(32)).(*BytesFlipper)
+	return &RandomFlipper{f}
+}
+
+func (f *RandomFlipper) Next() bool {
+	if f.BytesFlipper.i >= f.b.BitLen() {
+		f.BytesFlipper.b.SetBytes(randomBytes(32))
+	}
+	return f.BytesFlipper.Next()
+}
+
+func randomBytes(n int) []byte {
+	b := make([]byte, n)
+	_, err := cryptorand.Read(b)
+	if err != nil {
+		panic(err)
+	}
+	return b
+}
+
 type Options struct {
 	Colored         bool
 	EdgeBrightness  float64
 	ColorVariations float64
 	BrightnessNoise float64
 	Saturation      float64
-	Random          *rand.Rand
+	Flipper         Flipper
 }
 
 func DefaultOptions() *Options {
@@ -138,7 +203,7 @@ func DefaultOptions() *Options {
 		ColorVariations: 0.2,
 		BrightnessNoise: 0.3,
 		Saturation:      0.5,
-		Random:          rand.New(rand.NewSource(time.Now().UnixNano())),
+		Flipper:         NewRandomFlipper(),
 	}
 }
 
@@ -168,7 +233,7 @@ func Spaceship() *Mask {
 type Generator struct {
 	mask    *Mask
 	options *Options
-	r       *rand.Rand
+	r       *mathrand.Rand
 }
 
 func NewGenerator(mask *Mask, options *Options) *Generator {
@@ -183,28 +248,19 @@ func NewGenerator(mask *Mask, options *Options) *Generator {
 
 func (g *Generator) Sprite() *image.RGBA {
 	t := *g.mask
-	t.chooseBody(g.options.Random)
+	t.chooseBody(g.options.Flipper)
 	t.chooseEdges()
 	m := image.NewRGBA(image.Rect(0, 0, g.mask.ImageHeight(), g.mask.ImageWidth()))
-	/*
-		for y := 0; y < g.mask.ImageHeight(); y++ {
-			for x := 0; x < g.mask.ImageWidth(); x++ {
-				if g.mask.get(x, y) == PixelBorder {
-					m.Set(x, y, color.RGBA{0, 0, 0, 255})
-				} else {
-					m.Set(x, y, color.RGBA{255, 255, 255, 255})
-				}
-			}
-		}
-	*/
+
+	r := mathrand.New(mathrand.NewSource(g.options.Flipper.Int64()))
 
 	var (
 		borderColor        color.RGBA
 		isVerticalGradient bool
 		ulen, vlen         int
-		hue                float64 = g.options.Random.Float64()
+		hue                float64 = r.Float64()
 		saturation         float64 = math.Max(
-			math.Min(g.options.Random.Float64()*g.options.Saturation, 1.0),
+			math.Min(r.Float64()*g.options.Saturation, 1.0),
 			0)
 	)
 	if g.options.Colored {
@@ -216,7 +272,7 @@ func (g *Generator) Sprite() *image.RGBA {
 	} else {
 		borderColor = color.RGBA{0, 0, 0, 255}
 	}
-	if g.options.Random.Float64() > 0.5 {
+	if r.Float64() > 0.5 {
 		isVerticalGradient = true
 		ulen = g.mask.ImageHeight()
 		vlen = g.mask.ImageWidth()
@@ -226,11 +282,11 @@ func (g *Generator) Sprite() *image.RGBA {
 	}
 
 	for u := 0; u < ulen; u++ {
-		isNewColor := math.Abs(((g.options.Random.Float64()*2.0 - 1.0) +
-			(g.options.Random.Float64()*2.0 - 1.0) +
-			(g.options.Random.Float64()*2.0 - 1.0)) / 3.0)
+		isNewColor := math.Abs(((r.Float64()*2.0 - 1.0) +
+			(r.Float64()*2.0 - 1.0) +
+			(r.Float64()*2.0 - 1.0)) / 3.0)
 		if isNewColor > (1.0 - g.options.ColorVariations) {
-			hue = g.options.Random.Float64()
+			hue = r.Float64()
 		}
 
 		for v := 0; v < vlen; v++ {
@@ -257,7 +313,6 @@ func (g *Generator) Sprite() *image.RGBA {
 			} else if pixel == PixelBorder {
 				c = borderColor
 			}
-			log.Println(c)
 
 			m.Set(x, y, c)
 		}
