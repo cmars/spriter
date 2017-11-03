@@ -12,24 +12,18 @@ func DefaultOptions() *Options {
 }
 
 func Spaceship() *Mask {
-	return &Mask{
-		Bitmap: []Pixel{
-			p0, p0, p0, p0, p0, p0,
-			p0, p0, p0, p0, p1, p1,
-			p0, p0, p0, p0, p1, p_,
-			p0, p0, p0, p1, p1, p_,
-			p0, p0, p0, p1, p1, p_,
-			p0, p0, p1, p1, p1, p_,
-			p0, p1, p1, p1, p2, p2,
-			p0, p1, p1, p1, p2, p2,
-			p0, p1, p1, p1, p2, p2,
-			p0, p1, p1, p1, p1, p_,
-			p0, p0, p0, p1, p1, p1,
-			p0, p0, p0, p0, p0, p0,
-		},
-		MaskWidth:  6,
-		MaskHeight: 12,
-		MirrorX:    true,
-		MirrorY:    false,
-	}
+	return NewMask([]string{
+		"      ",
+		"    ..",
+		"    .|",
+		"   ..|",
+		"   ..|",
+		"  ...|",
+		" ...//",
+		" ...//",
+		" ...//",
+		" ....|",
+		"   ...",
+		"      ",
+	}, true, false)
 }

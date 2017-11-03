@@ -19,7 +19,6 @@ type Options struct {
 type Generator struct {
 	mask    *Mask
 	options *Options
-	r       *mathrand.Rand
 }
 
 func NewGenerator(mask *Mask, options *Options) *Generator {

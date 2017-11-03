@@ -1,5 +1,7 @@
 package spriter
 
+import "fmt"
+
 type Pixel int8
 
 const (
@@ -21,6 +23,38 @@ type Mask struct {
 	MaskHeight int
 	MirrorX    bool
 	MirrorY    bool
+}
+
+func NewMask(charmap []string, mirrorX, mirrorY bool) *Mask {
+	m := &Mask{MaskHeight: len(charmap), MirrorX: mirrorX, MirrorY: mirrorY}
+	if len(charmap) == 0 || len(charmap[0]) == 0 {
+		return m
+	}
+	m.Bitmap = make([]Pixel, len(charmap)*len(charmap[0]))
+	for y := range charmap {
+		if m.MaskWidth == 0 {
+			m.MaskWidth = len(charmap[y])
+		} else if m.MaskWidth != len(charmap[y]) {
+			panic(fmt.Sprintf("misaligned mask character map, row[%d] has %d columns, expected %d",
+				y, len(charmap[y]), m.MaskWidth))
+		}
+		for x := range charmap[y] {
+			i := y*m.MaskWidth + x
+			switch charmap[y][x] {
+			case '-', '|', '+':
+				m.Bitmap[i] = PixelBorder
+			case ' ':
+				m.Bitmap[i] = PixelEmpty
+			case '.':
+				m.Bitmap[i] = PixelEmptyOrBody
+			case '/':
+				m.Bitmap[i] = PixelBorderOrBody
+			case 'O':
+				m.Bitmap[i] = PixelBody
+			}
+		}
+	}
+	return m
 }
 
 func (m *Mask) ImageWidth() int {
