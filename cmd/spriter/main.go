@@ -5,15 +5,15 @@ import (
 	"log"
 	"os"
 
-	"spritegen"
+	"github.com/cmars/spriter"
 )
 
 func main() {
-	options := spritegen.DefaultOptions()
+	options := spriter.DefaultOptions()
 	options.Colored = true
-	mask := spritegen.Spaceship()
+	mask := spriter.Spaceship()
 	log.Printf("mask can represent %d bits", mask.BitLen())
-	g := spritegen.NewGenerator(mask, options)
+	g := spriter.NewGenerator(mask, options)
 	m := g.Sprite()
 	f, err := os.Create("image.png")
 	if err != nil {
